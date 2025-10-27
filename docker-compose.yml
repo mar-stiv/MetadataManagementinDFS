@@ -1,0 +1,44 @@
+# This file will create multiple containers from the same image in the Dockerfile
+services:
+  metadataServer1:
+    build:
+      container_name: metadataServer1
+      environment:
+        MODE=server
+        SERVER_ID=1
+        PORT=8081
+      hostname: metadataServer1
+      ports: ["8081:8081"]
+
+  metadataServer2:
+    build:
+      container_name: metadataServer2
+      environment:
+        MODE=server
+        SERVER_ID=2
+        PORT=8082
+      hostname: metadataServer2
+      ports: [ "8082:8082"]
+
+  metadataServer3:
+    build:
+      container_name: metadataServer3
+      environment:
+        MODE=server
+        SERVER_ID=3
+        PORT=8083
+      hostname: metadataServer1
+      ports: [ "8083:8083"]
+
+  router:
+    build:
+      container_name: router
+      environment:
+        MODE=router
+        PORT=8000
+        SERVERS=https://metadataServer1:8081,http://metadataServer:8082,http://metadataServer3:8083
+      ports: ["8000:8000"]
+      depends on:
+        metadataServer1
+        metadataServer2
+        metadataServer3
