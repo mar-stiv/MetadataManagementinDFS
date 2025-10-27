@@ -50,9 +50,3 @@ services:
       - metadata-server-1
       - metadata-server-2
       - metadata-server-3
-    networks:
-      - dfs-network
-
-networks:
-  dfs-network:
-    driver: bridge
