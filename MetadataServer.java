@@ -1,25 +1,400 @@
+// importing libraries
 import java.io.*;
-import java.net.*;
-public class Server {
-   public static void main(String[] args) {
-       try (ServerSocket serverSocket = new ServerSocket(5000)) {
-           System.out.println("Server started. Waiting for a client...");
-           // Accept client connection
-           Socket socket = serverSocket.accept();
-           System.out.println("Client connected.");
-           // Input and output streams for communication
-           BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-           PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-           String message;
-           while ((message = in.readLine()) != null) {
-               System.out.println("Client: " + message);
-               if ("exit".equalsIgnoreCase(message)) break;
-               out.println("Server: " + message.toUpperCase());
-           }
-           // Close resources
-           socket.close();
-       } catch (IOException e) {
-           e.printStackTrace();
-       }
-   }
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpExchange;
+
+public class MetadataServer {
+    private final int port; // port number that the server listens on
+    private final String serverId; // unique id for the server instance
+    private final Map<String, MetadataEntry> metadata; // in-memory storage of file metadata
+    private HttpServer server; // http server instance
+
+    // 1. Initialise + declare the file where we persistenty store metadata so that it survives server restarts
+    private static final String DATA_FILE = "/data/meta.txt";
+
+    // 2. Constructor
+    public MetadataServer(int port, String serverId) {
+        this.port = port;
+        this.serverId = serverId;
+        this.metadata = new ConcurrentHashMap<>(); // thread-safe map for concurrent access
+        load(); // load any existing metadata from disk
+        System.out.println("[Server " + serverId + "] Initialized");
+    }
+
+    // 3. Load metadata from disk file when server starts
+    private void load() {
+        try {
+            Path file = Paths.get(DATA_FILE);
+            if (Files.exists(file)) {
+                // 3.1 Try to read the file line by line
+                try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (line.isEmpty()) continue;
+
+                        String[] parts = line.split("\\|"); // each line format: path/type/parent/timestamp
+                        if (parts.length == 4) {
+                            String path = parts[0];
+                            String type = parts[1];
+                            String parent = parts[2].equals("null") ? null : parts[2];
+                            long timestamp = Long.parseLong(parts[3]);
+                            // 3.2 Restoring the emtadata entry to memory
+                            metadata.put(path, new MetadataEntry(path, type, parent, timestamp));
+                        }
+                    }
+                }
+                System.out.println("[Server " + serverId + "] Loaded " + metadata.size() + " entries from checkpoint");
+            }
+        } catch (Exception e) {
+            System.out.println("[Server " + serverId + "] No checkpoint found or error loading: " + e.getMessage());
+        }
+    }
+
+    // 4. Saving the current metadata to the disk, this is called after each change
+    private void save() {
+        try {
+            Path file = Paths.get(DATA_FILE);
+            Files.createDirectories(file.getParent()); // creates the directory if it does not exist
+            // 4.1 Writing all metadata entries to file
+            try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(file, StandardCharsets.UTF_8))) {
+                for (MetadataEntry entry : metadata.values()) {
+                    writer.printf("%s|%s|%s|%d%n",
+                            entry.getPath(),
+                            entry.getType(),
+                            entry.getParent() != null ? entry.getParent() : "null",
+                            entry.getTimestamp());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[Server " + serverId + "] Error saving checkpoint: " + e.getMessage());
+        }
+    }
+
+    // 5. Starting the http server + register API endpoints
+    public void start() throws IOException {
+        server = HttpServer.create(new InetSocketAddress(port), 0);
+
+        // 5.1 Register endpoints that the server will handle
+        server.createContext("/mkdir", this::handleMkdir);
+        server.createContext("/create", this::handleCreate);
+        server.createContext("/readdir", this::handleReaddir); // list directory contents
+        server.createContext("/stat", this::handleStat); // get file/directory info
+        server.createContext("/rm", this::handleRm); // remove file/directory
+        server.createContext("/dump", this::handleDump); // show all metadata (for debugging)
+
+        server.start();
+        System.out.println("[Server " + serverId + "] port=" + port);
+    }
+
+    // 6. Handling the creation of a new directory
+    private void handleMkdir(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "Method not allowed");
+            return;
+        }
+
+        // 6.1 Extracting the path param from the URL query string
+        String query = exchange.getRequestURI().getQuery();
+        String path = getQueryParam(query, "path");
+
+        if (path == null || path.isEmpty()) {
+            sendResponse(exchange, 400, "Missing or invalid 'path' parameter");
+            return;
+        }
+
+        try {
+            // 6.2 Checking if the path already exists
+            if (metadata.containsKey(path)) {
+                sendResponse(exchange, 409, "Path already exists");
+                return;
+            }
+
+            // 6.3 Checking if parent exists (skip check for root "/")
+            String parent = getParentPath(path);
+            if (parent != null && !"/".equals(parent) && !metadata.containsKey(parent)) {
+                sendResponse(exchange, 404, "Parent directory does not exist");
+                return;
+            }
+
+            // 6.4 Creating a new directory entry + save to disk
+            MetadataEntry entry = new MetadataEntry(path, "dir", parent, System.currentTimeMillis());
+            metadata.put(path, entry);
+            save(); // persist the change
+            System.out.println("[Server " + serverId + "] Created directory: " + path);
+            sendResponse(exchange, 200, "Directory created: " + path);
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "Error: " + e.getMessage());
+        }
+    }
+
+    // 7. Handling the creation of a new file
+    private void handleCreate(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "Method not allowed");
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        String path = getQueryParam(query, "path");
+
+        if (path == null || path.isEmpty()) {
+            sendResponse(exchange, 400, "Missing or invalid 'path' parameter");
+            return;
+        }
+
+        try {
+            if (metadata.containsKey(path)) {
+                sendResponse(exchange, 409, "File already exists");
+                return;
+            }
+
+            // 7.1 Checking that parent exists (skip check for root "/")
+            String parent = getParentPath(path);
+            if (parent != null && !"/".equals(parent) && !metadata.containsKey(parent)) {
+                sendResponse(exchange, 404, "Parent directory does not exist");
+                return;
+            }
+
+            // 7.2 Creating a new file entry + save to disk
+            MetadataEntry entry = new MetadataEntry(path, "file", parent, System.currentTimeMillis());
+            metadata.put(path, entry);
+            save();
+            System.out.println("[Server " + serverId + "] Created file: " + path);
+            sendResponse(exchange, 200, "File created: " + path);
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "Error: " + e.getMessage());
+        }
+    }
+
+    // 8. Handling listing directory contents
+    private void handleReaddir(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "Method not allowed");
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        String path = getQueryParam(query, "path");
+
+        if (path == null || path.isEmpty()) {
+            sendResponse(exchange, 400, "Missing or invalid 'path' parameter");
+            return;
+        }
+
+        try {
+            // 8.1 Checking if the path exists
+            MetadataEntry entry = metadata.get(path);
+            if (entry == null) {
+                sendResponse(exchange, 404, "Path not found");
+                return;
+            }
+
+            // 8.2 Verifying that it is a directory
+            if (!"dir".equals(entry.getType())) {
+                sendResponse(exchange, 400, "Path is not a directory");
+                return;
+            }
+
+            // 8.3 Finding all children of the directory
+            List<String> children = new ArrayList<>();
+            for (Map.Entry<String, MetadataEntry> e : metadata.entrySet()) {
+                // aka entries where this path is the parent
+                if (path.equals(e.getValue().getParent())) {
+                    children.add(e.getKey());
+                }
+            }
+
+            // 8.4 Returning the sorted list of children
+            Collections.sort(children);
+            String response = String.join(", ", children);
+            System.out.println("[Server " + serverId + "] Listed directory: " + path);
+            sendResponse(exchange, 200, response.isEmpty() ? "(empty)" : response);
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "Error: " + e.getMessage());
+        }
+    }
+
+    // 9. Handling getting file/directory metadata
+    private void handleStat(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "Method not allowed");
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        String path = getQueryParam(query, "path");
+
+        if (path == null || path.isEmpty()) {
+            sendResponse(exchange, 400, "Missing or invalid 'path' parameter");
+            return;
+        }
+
+        try {
+            MetadataEntry entry = metadata.get(path);
+            if (entry == null) {
+                sendResponse(exchange, 404, "Path not found");
+                return;
+            }
+
+            // 9.1 Formating + returning the metadata
+            String response = String.format("Path: %s, Type: %s, Parent: %s, Timestamp: %d",
+                    entry.getPath(), entry.getType(),
+                    entry.getParent() != null ? entry.getParent() : "root",
+                    entry.getTimestamp());
+            System.out.println("[Server " + serverId + "] Stat: " + path);
+            sendResponse(exchange, 200, response);
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "Error: " + e.getMessage());
+        }
+    }
+
+    // 10. Handling the removal of a file or directory
+    private void handleRm(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "Method not allowed");
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        String path = getQueryParam(query, "path");
+
+        if (path == null || path.isEmpty()) {
+            sendResponse(exchange, 400, "Missing or invalid 'path' parameter");
+            return;
+        }
+
+        try {
+            MetadataEntry entry = metadata.get(path);
+            if (entry == null) {
+                sendResponse(exchange, 404, "Path not found");
+                return;
+            }
+
+            // 10.1 Check if directory is empty (only for directories)
+            if ("dir".equals(entry.getType())) {
+                for (Map.Entry<String, MetadataEntry> e : metadata.entrySet()) {
+                    if (path.equals(e.getValue().getParent())) {
+                        sendResponse(exchange, 400, "Directory not empty");
+                        return;
+                    }
+                }
+            }
+
+            // 10.2 Remove the entry + save to disk
+            metadata.remove(path);
+            save();
+            System.out.println("[Server " + serverId + "] Removed: " + path);
+            sendResponse(exchange, 200, "Removed: " + path);
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "Error: " + e.getMessage());
+        }
+    }
+
+    // 11. Dumping all metadata stored on the server
+    private void handleDump(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "Method not allowed");
+            return;
+        }
+
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("[Server ").append(serverId).append("]\n");
+
+            // 11.1 Getting all entries sorted by path for readble output
+            List<MetadataEntry> entries = new ArrayList<>(metadata.values());
+            entries.sort(Comparator.comparing(MetadataEntry::getPath));
+
+            // 11.2 Formating each entry
+            for (MetadataEntry entry : entries) {
+                sb.append(String.format("  %s -> {type=%s, parent=%s, ts=%d}\n",
+                        entry.getPath(),
+                        entry.getType(),
+                        entry.getParent() != null ? entry.getParent() : "root",
+                        entry.getTimestamp()));
+            }
+
+            if (entries.isEmpty()) {
+                sb.append("  (no entries)\n");
+            }
+
+            System.out.println("[Server " + serverId + "] Dump requested");
+            sendResponse(exchange, 200, sb.toString());
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "Error: " + e.getMessage());
+        }
+    }
+
+    // Helper method: extracting parent path from a given path
+    // example: "/home/maria" -> "/home", "/home" -> "/", "/" -> null
+    private String getParentPath(String path) {
+        if (path.equals("/")) {
+            return null; // root has no parent
+        }
+        int lastSlash = path.lastIndexOf('/');
+        if (lastSlash == 0) {
+            return "/"; // parent is root
+        }
+        return lastSlash > 0 ? path.substring(0, lastSlash) : null;
+    }
+
+    // Helper method: extracting query param from URL
+    private String getQueryParam(String query, String key) {
+        if (query == null) return null;
+        String[] params = query.split("&");
+        for (String param : params) {
+            String[] pair = param.split("=", 2);
+            if (pair.length == 2 && key.equals(pair[0])) {
+                try {
+                    return java.net.URLDecoder.decode(pair[1], StandardCharsets.UTF_8.name());
+                } catch (Exception e) {
+                    return pair[1];
+                }
+            }
+        }
+        return null;
+    }
+
+    // Helper method: sending HTTP response
+    private void sendResponse(HttpExchange exchange, int statusCode, String response) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "text/plain");
+        exchange.sendResponseHeaders(statusCode, response.length());
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(response.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    // Inner class: representing a single metadata entry
+    public static class MetadataEntry {
+        private final String path; // full path
+        private final String type; // "file" or "dir"
+        private final String parent; // parent directory path
+        private final long timestamp; // creation time
+
+        public MetadataEntry(String path, String type, String parent, long timestamp) {
+            this.path = path;
+            this.type = type;
+            this.parent = parent;
+            this.timestamp = timestamp;
+        }
+
+        public String getPath() { return path; }
+        public String getType() { return type; }
+        public String getParent() { return parent; }
+        public long getTimestamp() { return timestamp; }
+    }
+
+    // 13. Stop the HTTP server
+    public void stop() {
+        if (server != null) {
+            server.stop(0);
+            System.out.println("[Server " + serverId + "] HTTP server stopped");
+        }
+    }
 }

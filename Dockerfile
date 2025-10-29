@@ -12,9 +12,6 @@ COPY *.java ./
 #4. compile the java files
 RUN javac *.java
 
-#5. set default environment variables
-ENV MODE=server PORT=8081 SERVER_ID=1
-
-#6. default command to start the program
-# runs java Main first + lets docker expand the environment vars first
-CMD ["sh","-c","java Main"]
+#5. default command to start the program
+# runs java Main first
+CMD ["java", "Main"]

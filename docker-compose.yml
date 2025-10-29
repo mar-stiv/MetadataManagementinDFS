@@ -3,43 +3,55 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: metadata-server-1
+    container_name: dfs-server-1
     environment:
       - MODE=server
       - SERVER_ID=1
       - PORT=8081
     ports:
       - "8081:8081"
+    volumes:
+      - meta1:/data
+    networks:
+      - dfs-network
 
   metadata-server-2:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: metadata-server-2
+    container_name: dfs-server-2
     environment:
       - MODE=server
       - SERVER_ID=2
       - PORT=8082
     ports:
       - "8082:8082"
+    volumes:
+      - meta2:/data
+    networks:
+      - dfs-network
 
   metadata-server-3:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: metadata-server-3
+    container_name: dfs-server-3
     environment:
       - MODE=server
       - SERVER_ID=3
       - PORT=8083
     ports:
       - "8083:8083"
+    volumes:
+      - meta3:/data
+    networks:
+      - dfs-network
 
   router:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: router
+    container_name: dfs-router
     environment:
       - MODE=router
       - PORT=8000
@@ -50,3 +62,14 @@ services:
       - metadata-server-1
       - metadata-server-2
       - metadata-server-3
+    networks:
+      - dfs-network
+
+networks:
+  dfs-network:
+    driver: bridge
+
+volumes:
+  meta1: {}
+  meta2: {}
+  meta3: {}
