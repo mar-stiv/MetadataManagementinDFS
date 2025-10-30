@@ -82,7 +82,7 @@ public class MetadataServer {
 
         // 5.1 Register endpoints that the server will handle
         server.createContext("/mkdir", this::handleMkdir);
-        server.createContext("/create", this::handleCreate);
+        server.createContext("/touch", this::handleTouch);
         server.createContext("/readdir", this::handleReaddir); // list directory contents
         server.createContext("/stat", this::handleStat); // get file/directory info
         server.createContext("/rm", this::handleRm); // remove file/directory
@@ -134,7 +134,7 @@ public class MetadataServer {
     }
 
     // 7. Handling the creation of a new file
-    private void handleCreate(HttpExchange exchange) throws IOException {
+    private void handleTouch(HttpExchange exchange) throws IOException {
         if (!"POST".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "Method not allowed");
             return;
@@ -174,7 +174,10 @@ public class MetadataServer {
 
     // 8. Handling listing directory contents
     private void handleReaddir(HttpExchange exchange) throws IOException {
-        if (!"GET".equals(exchange.getRequestMethod())) {
+        String requestMethod = exchange.getRequestMethod();
+        if (!"GET".equals(requestMethod)) {
+            System.out.println("Unsupported method: " + requestMethod);
+            System.out.flush();
             sendResponse(exchange, 405, "Method not allowed");
             return;
         }

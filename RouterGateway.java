@@ -40,7 +40,7 @@ public class RouterGateway {
         // 3.2 Registering API endpoints with their handlers
         // use parent-based routing for consistency
         http.createContext("/mkdir",   ex -> forward(ex, true));
-        http.createContext("/create",  ex -> forward(ex, true));
+        http.createContext("/touch",  ex -> forward(ex, true));
         http.createContext("/rm",      ex -> forward(ex, true));
         http.createContext("/readdir", ex -> forward(ex, false));
         http.createContext("/stat",    ex -> forward(ex, false));

@@ -48,11 +48,11 @@ curl -X POST "http://localhost:8000/mkdir?path=/home/maria"
 Invoke-WebRequest -Uri "http://localhost:8000/mkdir?path=/home" -Method POST
 ```
 
-### 2. Create File (create)
+### 2. Create File (touch)
 
 ```bash
-curl -X POST "http://localhost:8000/create?path=/home/maria/file1.txt"
-curl -X POST "http://localhost:8000/create?path=/home/maria/file2.txt"
+curl -X POST "http://localhost:8000/touch?path=/home/maria/file1.txt"
+curl -X POST "http://localhost:8000/touch?path=/home/maria/file2.txt"
 ```
 
 ### 3. List Directory Contents (readdir)
@@ -118,10 +118,10 @@ curl -X POST "http://localhost:8000/mkdir?path=/home/user1"
 curl -X POST "http://localhost:8000/mkdir?path=/home/user2"
 
 # Create files in different directories
-curl -X POST "http://localhost:8000/create?path=/home/user1/file1.txt"
-curl -X POST "http://localhost:8000/create?path=/home/user1/file2.txt"
-curl -X POST "http://localhost:8000/create?path=/home/user2/file3.txt"
-curl -X POST "http://localhost:8000/create?path=/home/user2/file4.txt"
+curl -X POST "http://localhost:8000/touch?path=/home/user1/file1.txt"
+curl -X POST "http://localhost:8000/touch?path=/home/user1/file2.txt"
+curl -X POST "http://localhost:8000/touch?path=/home/user2/file3.txt"
+curl -X POST "http://localhost:8000/touch?path=/home/user2/file4.txt"
 
 # List directory contents
 curl "http://localhost:8000/readdir?path=/home"
@@ -180,3 +180,22 @@ The system uses these environment variables:
 ├── docker-compose.yml        # Orchestrates 1 router + 3 servers
 └── README.md                 # This file
 ```
+
+## TO DO next
+* create: rename as touch --> OK
+* readdir:
+  * error when trying to read a directory "Method not allowed" error.
+  * --> this is because I was trying to use the POST method instead of the GET method
+* make the command line commands more practical (to be just able to type the command name and its arguments)
+  * I've been looking into it. Mistral offers me to create a CLI client
+  * advantage of doing this, don't have to specify the method (GET  or POST)
+  * is this really necessary?
+
+## TO DO (optional)
+* stat : add statistics
+* tree and fulltree commands
+* modify current path (cd) command
+* permissions : include them in the metadata, chmod command
+
+* if one data server stops running, we can still access other servers --> YES
+* we can continue accessing the file system after interrupting and restarting the cluster server
