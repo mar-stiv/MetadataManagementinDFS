@@ -110,6 +110,18 @@ curl "http://localhost:8082/dump"
 curl "http://localhost:8083/dump"
 ```
 
+### 9. Show Tree of a Specific Folder
+Example for ```/home``` folder.
+
+Showing file and folder names:
+```bash
+curl "http://localhost:8000/tree?path=/home"  
+```
+Showing absolute paths of files and folders:
+```bash
+curl "http://localhost:8000/fulltree?path=/home"  
+```
+
 ## Test Scenario
 ```bash
 # Create directory hierarchy
@@ -135,6 +147,10 @@ curl "http://localhost:8000/stat?path=/home/user1/file1.txt"
 curl "http://localhost:8081/dump"
 curl "http://localhost:8082/dump"
 curl "http://localhost:8083/dump"
+
+# Show trees
+curl "http://localhost:8000/tree?path=/home"  
+curl "http://localhost:8000/fulltree?path=/home"  
 
 # Clean up
 curl -X POST "http://localhost:8000/rm?path=/home/user1/file1.txt"
@@ -182,7 +198,6 @@ The system uses these environment variables:
 ```
 
 ## TO DO next
-* create: rename as touch --> OK
 * readdir:
   * error when trying to read a directory "Method not allowed" error.
   * --> this is because I was trying to use the POST method instead of the GET method

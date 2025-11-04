@@ -72,7 +72,8 @@ public class Main {
                 System.out.println("Metadata Server " + serverId + " is running. Press Ctrl+C to stop.");
 
                 Thread.currentThread().join(); // 4.3 Keeping the main thread alive
-            } else {
+            }
+            else {
                 System.err.println("Error: Unknown MODE: " + mode);
                 System.err.println("Valid modes: router, server");
                 System.exit(1);

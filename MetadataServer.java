@@ -7,6 +7,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
+import java.lang.*;
 
 public class MetadataServer {
     private final int port; // port number that the server listens on
@@ -23,6 +24,12 @@ public class MetadataServer {
         this.serverId = serverId;
         this.metadata = new ConcurrentHashMap<>(); // thread-safe map for concurrent access
         load(); // load any existing metadata from disk
+        // Ensure the root directory exists
+        if (!metadata.containsKey("/")) {
+            metadata.put("/", new MetadataEntry("/", "dir", null, System.currentTimeMillis()));
+            save();
+            System.out.println("[Server " + serverId + "] Created root directory");
+        }
         System.out.println("[Server " + serverId + "] Initialized");
     }
 
@@ -87,6 +94,8 @@ public class MetadataServer {
         server.createContext("/stat", this::handleStat); // get file/directory info
         server.createContext("/rm", this::handleRm); // remove file/directory
         server.createContext("/dump", this::handleDump); // show all metadata (for debugging)
+        server.createContext("/tree", this::handleTree); // show the tree of the directory with relative paths
+        server.createContext("/fulltree", this::handleFullTree); // show the tree of the directory
 
         server.start();
         System.out.println("[Server " + serverId + "] port=" + port);
@@ -334,6 +343,59 @@ public class MetadataServer {
         }
     }
 
+    // 12. Handling the tree command to list directory contents in a tree-like format
+    // with relative paths
+    private void handleTree(HttpExchange exchange) throws IOException {
+        handleGenericTree(exchange, false);
+    }
+
+    // with absolute paths
+    private void handleFullTree(HttpExchange exchange) throws IOException {
+        handleGenericTree(exchange, true);
+    }
+
+    // Generic handling (relative or absolute paths)
+    private void handleGenericTree(HttpExchange exchange, boolean useAbsolutePaths) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "Method not allowed");
+            return;
+        }
+        String query = exchange.getRequestURI().getQuery();
+        String path;
+
+        // If there is no query string, default to root ("/")
+        if (query == null || query.isEmpty()) {
+            path = "./";
+        }
+        else {
+            path = getQueryParam(query, "path");
+            if (path == null || path.isEmpty()) {
+                sendResponse(exchange, 400, "Missing or invalid 'path' parameter");
+                return;
+            }
+        }
+        try {
+            MetadataEntry entry = metadata.get(path);
+            if (entry == null) {
+                sendResponse(exchange, 404, "Path not found");
+                return;
+            }
+            if (!"dir".equals(entry.getType())) {
+                sendResponse(exchange, 400, "Path is not a directory");
+                return;
+            }
+            // 12.1 Build the tree output
+            StringBuilder treeOutput = new StringBuilder();
+            treeOutput.append(path);
+            treeOutput.append("\n");
+            buildTree(path, treeOutput, 0, useAbsolutePaths);
+            System.out.println("[Server " + serverId + "] Tree: " + path);
+            sendResponse(exchange, 200, treeOutput.toString());
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "Error: " + e.getMessage());
+        }
+    }
+
     // Helper method: extracting parent path from a given path
     // example: "/home/maria" -> "/home", "/home" -> "/", "/" -> null
     private String getParentPath(String path) {
@@ -366,10 +428,56 @@ public class MetadataServer {
 
     // Helper method: sending HTTP response
     private void sendResponse(HttpExchange exchange, int statusCode, String response) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "text/plain");
-        exchange.sendResponseHeaders(statusCode, response.length());
+        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+        byte[] bytes = response == null ? new byte[0] : response.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(statusCode, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
-            os.write(response.getBytes(StandardCharsets.UTF_8));
+            os.write(bytes);
+        }
+    }
+
+
+    // Helper method: recursively build the tree output for a given path
+    private void buildTree(String path, StringBuilder output, int depth, boolean useAbsolutePaths) {
+        // Find all children of the current path
+        List<String> children = new ArrayList<>();
+        for (Map.Entry<String, MetadataEntry> entry : metadata.entrySet()) {
+            String parent = entry.getValue().getParent();
+            if (path.equals(parent)) {
+                children.add(entry.getKey());
+            }
+        }
+        Collections.sort(children); // Sort children for consistent output
+
+        // Sort children for consistent output
+        for (int i = 0; i < children.size(); i++) {
+            String child = children.get(i);
+            MetadataEntry childEntry = metadata.get(child);
+            boolean isLast = (i == children.size() - 1);
+
+            // Indentation
+            for (int j = 0; j < depth; j++) {
+                output.append("    ");
+            }
+
+            // Branch symbol
+            output.append(isLast ? "└── " : "├── ");
+
+            // Child name
+            String name;
+            if (useAbsolutePaths){
+                name = child;
+            }
+            else {
+                name = child.substring(child.lastIndexOf('/') + 1);
+            }
+            output.append(name);
+            output.append("\n");
+
+            // Recurse if it's a directory
+            if ("dir".equals(childEntry.getType())) {
+                buildTree(child, output, depth + 1, useAbsolutePaths);
+            }
         }
     }
 

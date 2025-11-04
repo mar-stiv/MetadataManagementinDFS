@@ -40,10 +40,12 @@ public class RouterGateway {
         // 3.2 Registering API endpoints with their handlers
         // use parent-based routing for consistency
         http.createContext("/mkdir",   ex -> forward(ex, true));
-        http.createContext("/touch",  ex -> forward(ex, true));
+        http.createContext("/touch",   ex -> forward(ex, true));
         http.createContext("/rm",      ex -> forward(ex, true));
         http.createContext("/readdir", ex -> forward(ex, false));
         http.createContext("/stat",    ex -> forward(ex, false));
+        http.createContext("/tree",    ex -> forward(ex, false));
+        http.createContext("/fulltree",ex -> forward(ex, false));
         http.createContext("/chkdist", this::chkdist); // shows cluster distribution
         http.createContext("/cluster", this::clusterStatus); // show cluster health
         http.createContext("/health",  x -> ok(x, "ok")); // checks health
@@ -57,6 +59,7 @@ public class RouterGateway {
     // 4. Helper method: normalising a path by ensuring that it starts with / + does not end with /
     private static String normalize(String p) {
         if (p == null || p.trim().isEmpty()) return "/";
+        p = p.replaceAll("/+", "/");
         if (!p.startsWith("/")) p = "/" + p;
         if (p.length() > 1 && p.endsWith("/")) p = p.substring(0, p.length() - 1);
         return p;

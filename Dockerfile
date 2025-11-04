@@ -12,6 +12,10 @@ COPY *.java ./
 #4. compile the java files
 RUN javac *.java
 
-#5. default command to start the program
+#5. to ensure correct encoding in UTF-8
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+#6. default command to start the program
 # runs java Main first
-CMD ["java", "Main"]
+CMD ["java", "-Dfile.encoding=UTF-8", "Main"]
