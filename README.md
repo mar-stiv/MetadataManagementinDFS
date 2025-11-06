@@ -39,8 +39,8 @@ All operations are available through the Router (port 8000) or directly through 
 ### 1. Create Directory (mkdir)
 
 ```bash
-curl -X POST "http://localhost:8000/mkdir?path=/home"
-curl -X POST "http://localhost:8000/mkdir?path=/home/maria"
+$ mkdir home
+$ mkdir home/maria
 ```
 
 **PowerShell:**
@@ -51,14 +51,14 @@ Invoke-WebRequest -Uri "http://localhost:8000/mkdir?path=/home" -Method POST
 ### 2. Create File (touch)
 
 ```bash
-curl -X POST "http://localhost:8000/touch?path=/home/maria/file1.txt"
-curl -X POST "http://localhost:8000/touch?path=/home/maria/file2.txt"
+$ touch home/maria/file1.txt
+$ touch home/maria/file2.txt
 ```
 
 ### 3. List Directory Contents (readdir)
 
 ```bash
-curl "http://localhost:8000/readdir?path=/home/maria"
+$ readdir home/maria
 ```
 
 Expected output:
@@ -69,7 +69,7 @@ file1.txt, file2.txt
 ### 4. Get File/Directory Metadata (stat)
 
 ```bash
-curl "http://localhost:8000/stat?path=/home/maria/file1.txt"
+$ stat home/maria/file1.txt
 ```
 
 Expected output:
@@ -80,19 +80,19 @@ Path: /home/maria/file1.txt, Type: file, Parent: /home/maria, Timestamp: 1234567
 ### 5. Remove File (rm)
 
 ```bash
-curl -X POST "http://localhost:8000/rm?path=/home/maria/file1.txt"
+$ rm home/maria/file1.txt
 ```
 
 ### 6. Remove Empty Directory
 
 ```bash
-curl -X POST "http://localhost:8000/rm?path=/home/maria"
+$ rm home/maria
 ```
 
 ### 7. Show Cluster Status
 
 ```bash
-curl "http://localhost:8000/cluster"
+$ cluster
 ```
 
 ### 8. Dump Server Metadata
@@ -101,13 +101,13 @@ Check which metadata is stored on each server:
 
 ```bash
 # Server 1
-curl "http://localhost:8081/dump"
+$ dump 1
 
 # Server 2
-curl "http://localhost:8082/dump"
+$ dump 2
 
 # Server 3
-curl "http://localhost:8083/dump"
+$ dump 2
 ```
 
 ### 9. Show Tree of a Specific Folder
@@ -115,46 +115,47 @@ Example for ```/home``` folder.
 
 Showing file and folder names:
 ```bash
-curl "http://localhost:8000/tree?path=/home"  
+$ tree home  
 ```
 Showing absolute paths of files and folders:
 ```bash
-curl "http://localhost:8000/fulltree?path=/home"  
+$ fulltree home
 ```
 
 ## Test Scenario
 ```bash
 # Create directory hierarchy
-curl -X POST "http://localhost:8000/mkdir?path=/home"
-curl -X POST "http://localhost:8000/mkdir?path=/home/user1"
-curl -X POST "http://localhost:8000/mkdir?path=/home/user2"
+$ mkdir home
+$ mkdir home/user1
+$ mkdir home/user2
 
 # Create files in different directories
-curl -X POST "http://localhost:8000/touch?path=/home/user1/file1.txt"
-curl -X POST "http://localhost:8000/touch?path=/home/user1/file2.txt"
-curl -X POST "http://localhost:8000/touch?path=/home/user2/file3.txt"
-curl -X POST "http://localhost:8000/touch?path=/home/user2/file4.txt"
+$ touch home/user1/file1.txt
+$ touch home/user1/file2.txt
+$ touch home/user2/file3.txt
+$ touch home/user2/file4.txt
 
 # List directory contents
-curl "http://localhost:8000/readdir?path=/home"
-curl "http://localhost:8000/readdir?path=/home/user1"
-curl "http://localhost:8000/readdir?path=/home/user2"
+$ readdir home
+$ readdir home/user1
+$ readdir home/user2
 
 # Get file metadata
-curl "http://localhost:8000/stat?path=/home/user1/file1.txt"
+$ stat home/user1/file1.txt
 
 # Show distribution across servers
-curl "http://localhost:8081/dump"
-curl "http://localhost:8082/dump"
-curl "http://localhost:8083/dump"
+$ dump 1
+$ dump 2
+$ dump 3
+
 
 # Show trees
-curl "http://localhost:8000/tree?path=/home"  
-curl "http://localhost:8000/fulltree?path=/home"  
+$ tree home
+$ fulltree home 
 
 # Clean up
-curl -X POST "http://localhost:8000/rm?path=/home/user1/file1.txt"
-curl -X POST "http://localhost:8000/rm?path=/home/user2"
+rm home/user1/file1.txt
+rm home/user2
 ```
 
 ## Functionality and Features
@@ -196,21 +197,3 @@ The system uses these environment variables:
 ├── docker-compose.yml        # Orchestrates 1 router + 3 servers
 └── README.md                 # This file
 ```
-
-## TO DO next
-* readdir:
-  * error when trying to read a directory "Method not allowed" error.
-  * --> this is because I was trying to use the POST method instead of the GET method
-* make the command line commands more practical (to be just able to type the command name and its arguments)
-  * I've been looking into it. Mistral offers me to create a CLI client
-  * advantage of doing this, don't have to specify the method (GET  or POST)
-  * is this really necessary?
-
-## TO DO (optional)
-* stat : add statistics
-* tree and fulltree commands
-* modify current path (cd) command
-* permissions : include them in the metadata, chmod command
-
-* if one data server stops running, we can still access other servers --> YES
-* we can continue accessing the file system after interrupting and restarting the cluster server
