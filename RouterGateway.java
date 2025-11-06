@@ -62,14 +62,11 @@ public class RouterGateway {
         p = p.replaceAll("/+", "/");
         if (!p.startsWith("/")) p = "/" + p;
         if (p.length() > 1 && p.endsWith("/")) p = p.substring(0, p.length() - 1);
-        System.out.println("In: Normalise, where p is returned as: " + p);
         return p;
     }
 
     // 5. Helper method: extracting the routing key from a path, using the first directory level
-    private String getRoutingKey(String path) {
-        String normalized = normalize(path);
-
+    private String getRoutingKey(String normalized) {
         // 5.1 Root always goes to same routing
         if (normalized.equals("/")) {
             return "/";
@@ -86,14 +83,12 @@ public class RouterGateway {
 
     // 6. Helper method: picking which backend server should handle a write operation
     private String pickBackendForWrite(String path) {
-        System.out.println("In: Router, where path is sent as: " + path);
         String normalizedPath = normalize(path);
         String routingKey = getRoutingKey(normalizedPath);
 
         // 6.1 using hash-based distribution
         int i = Math.abs(routingKey.hashCode()) % backends.size();
         String selected = backends.get(i);
-        System.out.println("In: Router, where path is sent as: " + normalizedPath);
         System.out.println("[Router] WRITE path='" + normalizedPath + "' routingKey='" + routingKey + "' -> " + selected);
         return selected;
     }

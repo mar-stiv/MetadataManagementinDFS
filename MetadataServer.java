@@ -24,14 +24,6 @@ public class MetadataServer {
         this.serverId = serverId;
         this.metadata = new ConcurrentHashMap<>(); // thread-safe map for concurrent access
         load(); // load any existing metadata from disk
-
-        // Ensure the root directory exists
-//        if (!metadata.containsKey("/")) {
-//            metadata.put("/", new MetadataEntry("/", "dir", null, System.currentTimeMillis()));
-//            save();
-//            System.out.println("[Server " + serverId + "] Created root directory");
-//        }
-
         System.out.println("[Server " + serverId + "] Initialized");
     }
 
@@ -121,7 +113,6 @@ public class MetadataServer {
 
         try {
             // 6.2 Checking if the path already exists
-            System.out.println("In: handleMkdir, where path is checked as: " + path);
             if (metadata.containsKey(path)) {
                 sendResponse(exchange, 409, "Path already exists");
                 return;
