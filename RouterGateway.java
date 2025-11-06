@@ -62,6 +62,7 @@ public class RouterGateway {
         p = p.replaceAll("/+", "/");
         if (!p.startsWith("/")) p = "/" + p;
         if (p.length() > 1 && p.endsWith("/")) p = p.substring(0, p.length() - 1);
+        System.out.println("In: Normalise, where p is returned as: " + p);
         return p;
     }
 
@@ -85,22 +86,26 @@ public class RouterGateway {
 
     // 6. Helper method: picking which backend server should handle a write operation
     private String pickBackendForWrite(String path) {
-        String routingKey = getRoutingKey(path);
+        System.out.println("In: Router, where path is sent as: " + path);
+        String normalizedPath = normalize(path);
+        String routingKey = getRoutingKey(normalizedPath);
 
         // 6.1 using hash-based distribution
         int i = Math.abs(routingKey.hashCode()) % backends.size();
         String selected = backends.get(i);
-        System.out.println("[Router] WRITE path='" + path + "' routingKey='" + routingKey + "' -> " + selected);
+        System.out.println("In: Router, where path is sent as: " + normalizedPath);
+        System.out.println("[Router] WRITE path='" + normalizedPath + "' routingKey='" + routingKey + "' -> " + selected);
         return selected;
     }
 
     // 7. Helper method: picking which backend server should handle a read operation
     private String pickBackendForRead(String path) {
         // For reads, use the same routing key logic to ensure we find the data
-        String routingKey = getRoutingKey(path);
+        String normalizedPath = normalize(path);
+        String routingKey = getRoutingKey(normalizedPath);
         int i = Math.abs(routingKey.hashCode()) % backends.size();
         String selected = backends.get(i);
-        System.out.println("[Router] READ path='" + path + "' routingKey='" + routingKey + "' -> " + selected);
+        System.out.println("[Router] READ path='" + normalizedPath + "' routingKey='" + routingKey + "' -> " + selected);
         return selected;
     }
 
@@ -114,12 +119,13 @@ public class RouterGateway {
         }
 
         // 8.2 Choosing which backend server to forward this request to
-        String backend = isWrite ? pickBackendForWrite(path) : pickBackendForRead(path);
-        System.out.println("[Router] " + (isWrite ? "WRITE" : "READ") + " path='" + path + "' -> " + backend);
+        String normalizedPath = normalize(path);
+        String backend = isWrite ? pickBackendForWrite(normalizedPath) : pickBackendForRead(normalizedPath);
+        System.out.println("[Router] " + (isWrite ? "WRITE" : "READ") + " path='" + normalizedPath + "' -> " + backend);
 
         // 8.3 Constructing the target URL: backend + original path + query parameters
         String targetUrl = backend + ex.getRequestURI().getPath() + "?path=" +
-                URLEncoder.encode(path, "UTF-8");
+                URLEncoder.encode(normalizedPath, "UTF-8");
 
         try {
             // 8.4 Making the http call to the backend server
