@@ -24,12 +24,6 @@ public class MetadataServer {
         this.serverId = serverId;
         this.metadata = new ConcurrentHashMap<>(); // thread-safe map for concurrent access
         load(); // load any existing metadata from disk
-        // Ensure the root directory exists
-        if (!metadata.containsKey("/")) {
-            metadata.put("/", new MetadataEntry("/", "dir", null, System.currentTimeMillis()));
-            save();
-            System.out.println("[Server " + serverId + "] Created root directory");
-        }
         System.out.println("[Server " + serverId + "] Initialized");
     }
 
@@ -74,7 +68,7 @@ public class MetadataServer {
                     writer.printf("%s|%s|%s|%d%n",
                             entry.getPath(),
                             entry.getType(),
-                            entry.getParent() != null ? entry.getParent() : "null",
+                            entry.getParent() != null ? entry.getParent() : "null", // here parent is saved
                             entry.getTimestamp());
                 }
             }
