@@ -86,7 +86,6 @@ public class RouterGateway {
 
     // 6. Helper method: picking which backend server should handle a write operation
     private String pickBackendForWrite(String path) {
-        System.out.println("In: Router, where path is sent as: " + path);
         String normalizedPath = normalize(path);
         String routingKey = getRoutingKey(normalizedPath);
 
