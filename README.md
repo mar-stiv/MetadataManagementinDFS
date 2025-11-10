@@ -34,18 +34,13 @@ This will start:
 - Metadata Server 3 at `http://localhost:8083`
 
 ## 3. Calling API endpoints
-All operations are available through the Router (port 8000) or directly through individual servers. Note: curl is an alias for Invoke-WebRequest for Windows PowerShell.
+All operations are available through the Router (port 8000) or directly through individual servers. You may test the following commands using CMD or Command Prompt in IntelliJ IDE.
 
 ### 1. Create Directory (mkdir)
 
 ```bash
 $ mkdir home
 $ mkdir home/maria
-```
-
-**PowerShell:**
-```powershell
-Invoke-WebRequest -Uri "http://localhost:8000/mkdir?path=/home" -Method POST
 ```
 
 ### 2. Create File (touch)
