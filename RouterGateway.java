@@ -108,10 +108,6 @@ public class RouterGateway {
     private void forward(HttpExchange ex, boolean isWrite) throws IOException {
         // 8.1 Extracting the path parameter from the query string
         String path = getQueryParam(ex, "path");
-        if (path == null || path.trim().isEmpty()) {
-            sendResponse(ex, 400, "Missing or invalid 'path' parameter");
-            return;
-        }
 
         // 8.2 Choosing which backend server to forward this request to
         String normalizedPath = normalize(path);

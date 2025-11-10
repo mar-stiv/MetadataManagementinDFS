@@ -322,7 +322,7 @@ public class MetadataServer {
                 sb.append(String.format("  %s -> {type=%s, parent=%s, ts=%d}\n",
                         entry.getPath(),
                         entry.getType(),
-                        entry.getParent() != null ? entry.getParent() : "root",
+                        entry.getParent() != null ? entry.getParent() : "null",
                         entry.getTimestamp()));
             }
 
@@ -359,13 +359,12 @@ public class MetadataServer {
 
         // If there is no query string, default to root ("/")
         if (query == null || query.isEmpty()) {
-            path = "./";
+            path = "/";
         }
         else {
             path = getQueryParam(query, "path");
             if (path == null || path.isEmpty()) {
-                sendResponse(exchange, 400, "Missing or invalid 'path' parameter");
-                return;
+                path = "/";
             }
         }
         try {
