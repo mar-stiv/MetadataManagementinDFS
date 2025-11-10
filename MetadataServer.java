@@ -38,10 +38,10 @@ public class MetadataServer {
         System.out.println("[Server " + serverId + "] Initialized");
     }
 
+    // Helper: simple hash-based responsibility check
     private boolean isResponsibleForPath(String path) {
-        // Simple hash-based responsibility check
         int hash = Math.abs(path.hashCode());
-        int serverIndex = hash % 3; // Assuming 3 servers
+        int serverIndex = hash % 3;
         return Integer.parseInt(serverId) == (serverIndex + 1);
     }
 
@@ -106,8 +106,8 @@ public class MetadataServer {
         server.createContext("/stat", this::handleStat); // get file/directory info
         server.createContext("/rm", this::handleRm); // remove file/directory
         server.createContext("/dump", this::handleDump); // show all metadata (for debugging)
-        server.createContext("/tree", this::handleTree); // show the tree of the directory with relative paths
-        server.createContext("/fulltree", this::handleFullTree); // show the tree of the directory
+        //server.createContext("/tree", this::handleTree); // show the tree of the directory with relative paths
+        //server.createContext("/fulltree", this::handleFullTree); // show the tree of the directory
 
         server.start();
         System.out.println("[Server " + serverId + "] port=" + port);
@@ -136,14 +136,8 @@ public class MetadataServer {
                 return;
             }
 
-            // 6.3 Checking if parent exists (skip check for root "/")
+            // 6.3 Creating a new directory entry + save to disk
             String parent = getParentPath(path);
-//            if (parent != null && !"/".equals(parent) && !metadata.containsKey(parent)) {
-//                sendResponse(exchange, 404, "Parent directory does not exist");
-//                return;
-//            }
-
-            // 6.4 Creating a new directory entry + save to disk
             MetadataEntry entry = new MetadataEntry(path, "dir", parent, System.currentTimeMillis());
             metadata.put(path, entry);
             save(); // persist the change
@@ -175,14 +169,8 @@ public class MetadataServer {
                 return;
             }
 
-            // 7.1 Checking that parent exists (skip check for root "/")
+            // 7.1 Creating a new file entry + save to disk
             String parent = getParentPath(path);
-//            if (parent != null && !"/".equals(parent) && !metadata.containsKey(parent)) {
-//                sendResponse(exchange, 404, "Parent directory does not exist");
-//                return;
-//            }
-
-            // 7.2 Creating a new file entry + save to disk
             MetadataEntry entry = new MetadataEntry(path, "file", parent, System.currentTimeMillis());
             metadata.put(path, entry);
             save();
@@ -269,7 +257,7 @@ public class MetadataServer {
             // 9.1 Formating + returning the metadata
             String response = String.format("Path: %s, Type: %s, Parent: %s, Timestamp: %d",
                     entry.getPath(), entry.getType(),
-                    entry.getParent() != null ? entry.getParent() : "null",
+                    entry.getParent() != null ? entry.getParent() : "root",
                     entry.getTimestamp());
             System.out.println("[Server " + serverId + "] Stat: " + path);
             sendResponse(exchange, 200, response);
@@ -340,7 +328,7 @@ public class MetadataServer {
                 sb.append(String.format("  %s -> {type=%s, parent=%s, ts=%d}\n",
                         entry.getPath(),
                         entry.getType(),
-                        entry.getParent() != null ? entry.getParent() : "null",
+                        entry.getParent() != null ? entry.getParent() : "root",
                         entry.getTimestamp()));
             }
 
@@ -350,58 +338,6 @@ public class MetadataServer {
 
             System.out.println("[Server " + serverId + "] Dump requested");
             sendResponse(exchange, 200, sb.toString());
-        } catch (Exception e) {
-            sendResponse(exchange, 500, "Error: " + e.getMessage());
-        }
-    }
-
-    // 12. Handling the tree command to list directory contents in a tree-like format
-    // with relative paths
-    private void handleTree(HttpExchange exchange) throws IOException {
-        handleGenericTree(exchange, false);
-    }
-
-    // with absolute paths
-    private void handleFullTree(HttpExchange exchange) throws IOException {
-        handleGenericTree(exchange, true);
-    }
-
-    // Generic handling (relative or absolute paths)
-    private void handleGenericTree(HttpExchange exchange, boolean useAbsolutePaths) throws IOException {
-        if (!"GET".equals(exchange.getRequestMethod())) {
-            sendResponse(exchange, 405, "Method not allowed");
-            return;
-        }
-        String query = exchange.getRequestURI().getQuery();
-        String path;
-
-        // If there is no query string, default to root ("/")
-        if (query == null || query.isEmpty()) {
-            path = "/";
-        }
-        else {
-            path = getQueryParam(query, "path");
-            if (path == null || path.isEmpty()) {
-                path = "/";
-            }
-        }
-        try {
-            MetadataEntry entry = metadata.get(path);
-            if (entry == null) {
-                sendResponse(exchange, 404, "Path not found");
-                return;
-            }
-            if (!"dir".equals(entry.getType())) {
-                sendResponse(exchange, 400, "Path is not a directory");
-                return;
-            }
-            // 12.1 Build the tree output
-            StringBuilder treeOutput = new StringBuilder();
-            treeOutput.append(path);
-            treeOutput.append("\n");
-            buildTree(path, treeOutput, 0, useAbsolutePaths);
-            System.out.println("[Server " + serverId + "] Tree: " + path);
-            sendResponse(exchange, 200, treeOutput.toString());
         } catch (Exception e) {
             sendResponse(exchange, 500, "Error: " + e.getMessage());
         }
@@ -444,51 +380,6 @@ public class MetadataServer {
         exchange.sendResponseHeaders(statusCode, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
-        }
-    }
-
-
-    // Helper method: recursively build the tree output for a given path
-    private void buildTree(String path, StringBuilder output, int depth, boolean useAbsolutePaths) {
-        // Find all children of the current path
-        List<String> children = new ArrayList<>();
-        for (Map.Entry<String, MetadataEntry> entry : metadata.entrySet()) {
-            String parent = entry.getValue().getParent();
-            if (path.equals(parent)) {
-                children.add(entry.getKey());
-            }
-        }
-        Collections.sort(children); // Sort children for consistent output
-
-        // Sort children for consistent output
-        for (int i = 0; i < children.size(); i++) {
-            String child = children.get(i);
-            MetadataEntry childEntry = metadata.get(child);
-            boolean isLast = (i == children.size() - 1);
-
-            // Indentation
-            for (int j = 0; j < depth; j++) {
-                output.append("    ");
-            }
-
-            // Branch symbol
-            output.append(isLast ? "└── " : "├── ");
-
-            // Child name
-            String name;
-            if (useAbsolutePaths){
-                name = child;
-            }
-            else {
-                name = child.substring(child.lastIndexOf('/') + 1);
-            }
-            output.append(name);
-            output.append("\n");
-
-            // Recurse if it's a directory
-            if ("dir".equals(childEntry.getType())) {
-                buildTree(child, output, depth + 1, useAbsolutePaths);
-            }
         }
     }
 
