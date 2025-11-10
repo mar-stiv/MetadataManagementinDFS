@@ -23,8 +23,26 @@ public class MetadataServer {
         this.port = port;
         this.serverId = serverId;
         this.metadata = new ConcurrentHashMap<>(); // thread-safe map for concurrent access
+
+        // Auto-create root directory if this server is responsible for it
+        String rootPath = "/";
+        if (isResponsibleForPath(rootPath)) {
+            if (!metadata.containsKey(rootPath)) {
+                metadata.put(rootPath, new MetadataEntry(rootPath, "dir", null, System.currentTimeMillis()));
+                save();
+                System.out.println("[Server " + serverId + "] Auto-created root directory");
+            }
+        }
+
         load(); // load any existing metadata from disk
         System.out.println("[Server " + serverId + "] Initialized");
+    }
+
+    private boolean isResponsibleForPath(String path) {
+        // Simple hash-based responsibility check
+        int hash = Math.abs(path.hashCode());
+        int serverIndex = hash % 3; // Assuming 3 servers
+        return Integer.parseInt(serverId) == (serverIndex + 1);
     }
 
     // 3. Load metadata from disk file when server starts
@@ -120,10 +138,10 @@ public class MetadataServer {
 
             // 6.3 Checking if parent exists (skip check for root "/")
             String parent = getParentPath(path);
-            if (parent != null && !"/".equals(parent) && !metadata.containsKey(parent)) {
-                sendResponse(exchange, 404, "Parent directory does not exist");
-                return;
-            }
+//            if (parent != null && !"/".equals(parent) && !metadata.containsKey(parent)) {
+//                sendResponse(exchange, 404, "Parent directory does not exist");
+//                return;
+//            }
 
             // 6.4 Creating a new directory entry + save to disk
             MetadataEntry entry = new MetadataEntry(path, "dir", parent, System.currentTimeMillis());
@@ -159,10 +177,10 @@ public class MetadataServer {
 
             // 7.1 Checking that parent exists (skip check for root "/")
             String parent = getParentPath(path);
-            if (parent != null && !"/".equals(parent) && !metadata.containsKey(parent)) {
-                sendResponse(exchange, 404, "Parent directory does not exist");
-                return;
-            }
+//            if (parent != null && !"/".equals(parent) && !metadata.containsKey(parent)) {
+//                sendResponse(exchange, 404, "Parent directory does not exist");
+//                return;
+//            }
 
             // 7.2 Creating a new file entry + save to disk
             MetadataEntry entry = new MetadataEntry(path, "file", parent, System.currentTimeMillis());

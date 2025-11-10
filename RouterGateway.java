@@ -68,17 +68,18 @@ public class RouterGateway {
     // 5. Helper method: extracting the routing key from a path, using the first directory level
     private String getRoutingKey(String normalized) {
         // 5.1 Root always goes to same routing
-        if (normalized.equals("/")) {
-            return "/";
-        }
+//        if (normalized.equals("/")) {
+//            return "/";
+//        }
 
         // 5.2 Extract first directory level for routing
         // example:
         // /home/maria/file.txt -> /home
         // /home/maria -> /home
         // /home -> /home
-        String[] parts = normalized.substring(1).split("/");
-        return "/" + parts[0];
+//        String[] parts = normalized.substring(1).split("/");
+//        return "/" + parts[0];
+        return normalized;
     }
 
     // 6. Helper method: picking which backend server should handle a write operation
@@ -114,6 +115,19 @@ public class RouterGateway {
         String backend = isWrite ? pickBackendForWrite(normalizedPath) : pickBackendForRead(normalizedPath);
         System.out.println("[Router] " + (isWrite ? "WRITE" : "READ") + " path='" + normalizedPath + "' -> " + backend);
 
+        if (isWrite) {
+            String parentPath = getParentPath(normalizedPath);
+            if (parentPath != null && !normalizedPath.equals("/")) {
+                System.out.println("[Router] Checking parent existence: '" + parentPath + "'");
+                if (!checkPathExists(parentPath)) {
+                    sendResponse(ex, 404, "Parent directory '" + parentPath + "' does not exist on any server");
+                    return;
+                }
+            }else{
+                System.out.println("[Router] Skipping parent check for: '" + normalizedPath + "' (parent: " + parentPath + ")");
+            }
+        }
+
         // 8.3 Constructing the target URL: backend + original path + query parameters
         String targetUrl = backend + ex.getRequestURI().getPath() + "?path=" +
                 URLEncoder.encode(normalizedPath, "UTF-8");
@@ -127,6 +141,56 @@ public class RouterGateway {
             System.err.println("[Router] Backend error for " + backend + ": " + e.getMessage());
             sendResponse(ex, 503, "Backend unavailable: " + backend);
         }
+    }
+
+    // Helper method: check if a path exists by querying the appropriate server
+    private boolean checkPathExists(String path) {
+        String normalizedPath = normalize(path);
+
+        // Check ALL backend servers for the parent
+        for (String backend : backends) {
+            try {
+                String targetUrl = backend + "/stat?path=" + URLEncoder.encode(normalizedPath, "UTF-8");
+                if (isPathExistsOnServer(targetUrl)) {
+                    System.out.println("[Router] Found parent '" + normalizedPath + "' on " + backend);
+                    return true; // Parent exists on at least one server
+                } else {
+                    System.out.println("[Router] Parent '" + normalizedPath + "' not found on " + backend);
+                }
+            } catch (IOException e) {
+                // Network error, continue checking other servers
+                System.out.println("[Router] Error checking parent '" + normalizedPath + "' on " + backend + ": " + e.getMessage());
+            }
+        }
+        return false; // Parent not found on any server
+    }
+
+    private boolean isPathExistsOnServer(String url) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(3000);
+        conn.setReadTimeout(5000);
+
+        try {
+            int responseCode = conn.getResponseCode();
+            // Path exists if we get 200 OK, doesn't exist if we get 404
+            return responseCode == 200;
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    // Helper method: extracting parent path from a given path
+    // example: "/home/maria" -> "/home", "/home" -> "/", "/" -> null
+    private String getParentPath(String path) {
+        if (path.equals("/")) {
+            return null; // root has no parent
+        }
+        int lastSlash = path.lastIndexOf('/');
+        if (lastSlash == 0) {
+            return "/"; // parent is root
+        }
+        return lastSlash > 0 ? path.substring(0, lastSlash) : null;
     }
 
     // 9. Cluster management endpoint: Showing how the metadata is distributed across servers
@@ -164,12 +228,6 @@ public class RouterGateway {
                 sb.append("Unreachable: ").append(e.getMessage()).append(")\n");
             }
         }
-
-        // 10.2 Explaining the routing strategy
-        sb.append("\nRouting Strategy:\n");
-        sb.append("  - All operations: hash(first directory level)\n");
-        sb.append("  - Ensures entire directory tree on same server\n");
-        sb.append("  - Example: /home, /home/maria, /home/maria/file.txt all same server\n");
 
         sendResponse(ex, 200, sb.toString());
     }
