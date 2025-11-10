@@ -32,7 +32,7 @@ public class RouterGateway {
         g.start();
     }
 
-    // 3.
+    // 3. Start connection
     public void start() throws Exception {
         // 3.1 Creating a http server which listens on a specific port:
         HttpServer http = HttpServer.create(new InetSocketAddress(port), 0);
@@ -44,8 +44,8 @@ public class RouterGateway {
         http.createContext("/rm",      ex -> forward(ex, true));
         http.createContext("/readdir", ex -> forward(ex, false));
         http.createContext("/stat",    ex -> forward(ex, false));
-        http.createContext("/tree",    ex -> forward(ex, false));
-        http.createContext("/fulltree",ex -> forward(ex, false));
+        http.createContext("/tree",    this::handleTree);
+        http.createContext("/fulltree",this::handleFullTree);
         http.createContext("/chkdist", this::chkdist); // shows cluster distribution
         http.createContext("/cluster", this::clusterStatus); // show cluster health
         http.createContext("/health",  x -> ok(x, "ok")); // checks health
@@ -65,56 +65,37 @@ public class RouterGateway {
         return p;
     }
 
-    // 5. Helper method: extracting the routing key from a path, using the first directory level
-    private String getRoutingKey(String normalized) {
-        // 5.1 Root always goes to same routing
-//        if (normalized.equals("/")) {
-//            return "/";
-//        }
-
-        // 5.2 Extract first directory level for routing
-        // example:
-        // /home/maria/file.txt -> /home
-        // /home/maria -> /home
-        // /home -> /home
-//        String[] parts = normalized.substring(1).split("/");
-//        return "/" + parts[0];
-        return normalized;
-    }
-
-    // 6. Helper method: picking which backend server should handle a write operation
+    // 5. Helper method: picking which backend server should handle a write operation
     private String pickBackendForWrite(String path) {
         String normalizedPath = normalize(path);
-        String routingKey = getRoutingKey(normalizedPath);
 
-        // 6.1 using hash-based distribution
-        int i = Math.abs(routingKey.hashCode()) % backends.size();
+        // 5.1 using hash-based distribution
+        int i = Math.abs(normalizedPath.hashCode()) % backends.size();
         String selected = backends.get(i);
-        System.out.println("[Router] WRITE path='" + normalizedPath + "' routingKey='" + routingKey + "' -> " + selected);
+        System.out.println("[Router] WRITE path='" + normalizedPath + "' -> " + selected);
         return selected;
     }
 
-    // 7. Helper method: picking which backend server should handle a read operation
+    // 6. Helper method: picking which backend server should handle a read operation
     private String pickBackendForRead(String path) {
-        // For reads, use the same routing key logic to ensure we find the data
         String normalizedPath = normalize(path);
-        String routingKey = getRoutingKey(normalizedPath);
-        int i = Math.abs(routingKey.hashCode()) % backends.size();
+
+        int i = Math.abs(normalizedPath.hashCode()) % backends.size();
         String selected = backends.get(i);
-        System.out.println("[Router] READ path='" + normalizedPath + "' routingKey='" + routingKey + "' -> " + selected);
+        System.out.println("[Router] READ path='" + normalizedPath + "' -> " + selected);
         return selected;
     }
 
-    // 8. Forwarding: forwards a http request to the appropriate backend server
+    // 7. Forwarding: forwards a http request to the appropriate backend server
     private void forward(HttpExchange ex, boolean isWrite) throws IOException {
-        // 8.1 Extracting the path parameter from the query string
+        // 7.1 Extracting the path parameter from the query string
         String path = getQueryParam(ex, "path");
         if (path == null || path.trim().isEmpty()) {
             sendResponse(ex, 400, "Missing or invalid 'path' parameter");
             return;
         }
 
-        // 8.2 Choosing which backend server to forward this request to
+        // 7.2 Choosing which backend server to forward this request to
         String normalizedPath = normalize(path);
         String backend = isWrite ? pickBackendForWrite(normalizedPath) : pickBackendForRead(normalizedPath);
         System.out.println("[Router] " + (isWrite ? "WRITE" : "READ") + " path='" + normalizedPath + "' -> " + backend);
@@ -132,22 +113,22 @@ public class RouterGateway {
             }
         }
 
-        // 8.3 Constructing the target URL: backend + original path + query parameters
+        // 7.3 Constructing the target URL: backend + original path + query parameters
         String targetUrl = backend + ex.getRequestURI().getPath() + "?path=" +
                 URLEncoder.encode(normalizedPath, "UTF-8");
 
         try {
-            // 8.4 Making the http call to the backend server
+            // 7.4 Making the http call to the backend server
             String response = httpCall(targetUrl, ex.getRequestMethod());
             sendResponse(ex, 200, response);
         } catch (IOException e) {
-            // 8.5 Handling backend server failures
+            // 7.5 Handling backend server failures
             System.err.println("[Router] Backend error for " + backend + ": " + e.getMessage());
             sendResponse(ex, 503, "Backend unavailable: " + backend);
         }
     }
 
-    // Helper method: check if a path exists by querying the appropriate server
+    // 8. Helper method: check if a path exists by querying the appropriate server
     private boolean checkPathExists(String path) {
         String normalizedPath = normalize(path);
 
@@ -184,7 +165,7 @@ public class RouterGateway {
         }
     }
 
-    // Helper method: extracting parent path from a given path
+    // 9. Helper method: extracting parent path from a given path
     // example: "/home/maria" -> "/home", "/home" -> "/", "/" -> null
     private String getParentPath(String path) {
         if (path.equals("/")) {
@@ -197,10 +178,10 @@ public class RouterGateway {
         return lastSlash > 0 ? path.substring(0, lastSlash) : null;
     }
 
-    // 9. Cluster management endpoint: Showing how the metadata is distributed across servers
+    // 10. Cluster management endpoint: Showing how the metadata is distributed across servers
     private void chkdist(HttpExchange ex) throws IOException {
         StringBuilder sb = new StringBuilder("=== Cluster Metadata Distribution ===\n\n");
-        // 9.1 Querying each server's dump endpoint to see what they store
+        // 10.1 Querying each server's dump endpoint to see what they store
         for (int i = 0; i < backends.size(); i++) {
             String backend = backends.get(i);
             sb.append("--- Server ").append(i + 1).append(" (").append(backend).append(") ---\n");
@@ -214,13 +195,13 @@ public class RouterGateway {
         sendResponse(ex, 200, sb.toString());
     }
 
-    // 10. Cluster management endpoint: Showing the cluster status + health info
+    // 11. Cluster management endpoint: Showing the cluster status + health info
     private void clusterStatus(HttpExchange ex) throws IOException {
         StringBuilder sb = new StringBuilder("=== Cluster Status ===\n\n");
         sb.append("Router: http://localhost:").append(port).append("\n");
         sb.append("Backend servers:\n");
 
-        // 10.1 Checking each server's health
+        // 11.1 Checking each server's health
         for (int i = 0; i < backends.size(); i++) {
             String backend = backends.get(i);
             sb.append("  Server ").append(i + 1).append(": ").append(backend);
@@ -236,7 +217,223 @@ public class RouterGateway {
         sendResponse(ex, 200, sb.toString());
     }
 
-    // 11. Utility method: making a http call to a backend server
+    // 12. Tree command handlers
+    private void handleTree(HttpExchange ex) throws IOException {
+        handleGlobalTree(ex, false);
+    }
+
+    private void handleFullTree(HttpExchange ex) throws IOException {
+        handleGlobalTree(ex, true);
+    }
+
+    // 13. Handle tree commands by aggregating from all servers
+    private void handleGlobalTree(HttpExchange ex, boolean useAbsolutePaths) throws IOException {
+        if (!"GET".equals(ex.getRequestMethod())) {
+            sendResponse(ex, 405, "Method not allowed");
+            return;
+        }
+
+        String path = getQueryParam(ex, "path");
+
+        if (path == null || path.isEmpty()) {
+            path = "/";
+        }
+
+        try {
+            // Collect all metadata from all servers
+            List<MetadataEntry> allEntries = new ArrayList<>();
+
+            for (String backend : backends) {
+                try {
+                    String dump = httpCall(backend + "/dump", "GET");
+                    List<MetadataEntry> serverEntries = parseDump(dump);
+                    allEntries.addAll(serverEntries); // append all entries obtained from server x to allEntries
+                } catch (IOException e) {
+                    System.err.println("[Router] Error getting dump from " + backend + ": " + e.getMessage());
+                }
+            }
+
+            // Build the global tree
+            String treeOutput = buildGlobalTree(path, allEntries, useAbsolutePaths);
+            sendResponse(ex, 200, treeOutput);
+
+        } catch (Exception e) {
+            sendResponse(ex, 500, "Error building tree: " + e.getMessage());
+        }
+    }
+
+    // 14. Parse dump output into MetadataEntry objects
+    private List<MetadataEntry> parseDump(String dump) {
+        List<MetadataEntry> entries = new ArrayList<>();
+        String[] lines = dump.split("\n");
+
+        for (String line : lines) {
+            line = line.trim();
+
+            // Skip empty lines and server header lines
+            if (line.isEmpty() || line.startsWith("[Server") || !line.contains("->")) {
+                continue;
+            }
+
+            try {
+                // Split on "->"
+                String[] parts = line.split("->", 2);
+                if (parts.length != 2) continue;
+
+                String path = parts[0].trim();
+                String attributes = parts[1].trim();
+
+                // Parse attributes: {type=dir, parent=/, ts=123456789}
+                if (attributes.startsWith("{") && attributes.endsWith("}")) {
+                    attributes = attributes.substring(1, attributes.length() - 1);
+                    String[] attrPairs = attributes.split(", ");
+
+                    String type = null, parent = null;
+                    long timestamp = 0;
+
+                    for (String attr : attrPairs) {
+                        String[] keyValue = attr.split("=", 2);
+                        if (keyValue.length == 2) {
+                            switch (keyValue[0]) {
+                                case "type": type = keyValue[1]; break;
+                                case "parent": parent = "root".equals(keyValue[1]) ? null : keyValue[1]; break;
+                                case "ts": timestamp = Long.parseLong(keyValue[1]); break;
+                            }
+                        }
+                    }
+
+                    if (type != null) {
+                        entries.add(new MetadataEntry(path, type, parent, timestamp));
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("[Router] Error parsing line: " + line);
+            }
+        }
+
+        return entries;
+    }
+
+    // 14. Build tree from all entries
+    private String buildGlobalTree(String rootPath, List<MetadataEntry> allEntries, boolean useAbsolutePaths) {
+        System.out.println("[Router] Building tree for: " + rootPath);
+        System.out.println("[Router] Total entries: " + allEntries.size());
+
+        // Find the root entry or create a virtual one
+        MetadataEntry rootEntry = null;
+        for (MetadataEntry entry : allEntries) {
+            if (entry.path.equals(rootPath)) {
+                rootEntry = entry;
+                break;
+            }
+        }
+
+        if (rootEntry == null && "/".equals(rootPath)) {
+            // Create virtual root if it doesn't exist but we're asking for root
+            rootEntry = new MetadataEntry("/", "dir", null, System.currentTimeMillis());
+            System.out.println("[Router] Created virtual root");
+        } else if (rootEntry == null) {
+            System.out.println("[Router] Path not found: " + rootPath);
+            return "Path not found: " + rootPath;
+        }
+
+        System.out.println("[Router] Root entry: " + rootEntry.path + " (type: " + rootEntry.type + ")");
+
+        StringBuilder output = new StringBuilder();
+
+        if (useAbsolutePaths) {
+            output.append(rootPath).append("\n");
+        } else {
+            String displayName = "/".equals(rootPath) ? "/" : rootPath.substring(rootPath.lastIndexOf('/') + 1);
+            output.append(displayName).append("\n");
+        }
+
+        Set<String> visitedPaths = new HashSet<>();
+        buildTreeRecursive(rootPath, output, 0, allEntries, useAbsolutePaths, visitedPaths);
+
+        System.out.println("[Router] Tree built successfully");
+        return output.toString();
+    }
+
+    // 15. Recursive tree building with cycle detection
+    private void buildTreeRecursive(String currentPath, StringBuilder output, int depth,
+                                    List<MetadataEntry> allEntries, boolean useAbsolutePaths,
+                                    Set<String> visitedPaths) {
+        // Cycle detection: if we've already visited this path, stop the recursion
+        if (visitedPaths.contains(currentPath)) {
+            // print for debugging
+//            for (int j = 0; j < depth; j++) {
+//                output.append("    ");
+//            }
+//            output.append("└── [CYCLE DETECTED: ").append(currentPath).append("]\n");
+            return;
+        }
+
+        visitedPaths.add(currentPath);
+
+        // Find all children of current path
+        List<MetadataEntry> children = new ArrayList<>();
+        for (MetadataEntry entry : allEntries) {
+            String parent = entry.parent != null ? entry.parent : "/";
+            if (parent.equals(currentPath)) {
+                children.add(entry);
+            }
+        }
+
+        // Sort children: directories first, then files, both alphabetically -- if needed?
+//        children.sort((a, b) -> {
+//            if (!a.type.equals(b.type)) {
+//                return b.type.compareTo(a.type); // "dir" comes before "file"
+//            }
+//            return a.path.compareTo(b.path);
+//        });
+
+        for (int i = 0; i < children.size(); i++) {
+            MetadataEntry child = children.get(i);
+            boolean isLast = (i == children.size() - 1);
+
+            // Indentation
+            for (int j = 0; j < depth; j++) {
+                output.append("    ");
+            }
+
+            // Branch symbol
+            output.append(isLast ? "└── " : "├── ");
+
+            // Child name
+            String name;
+            if (useAbsolutePaths) {
+                name = child.path;
+            } else {
+                name = child.path.substring(child.path.lastIndexOf('/') + 1);
+            }
+            output.append(name).append("\n");
+
+            // Recurse if it's a directory
+            if ("dir".equals(child.type)) {
+                buildTreeRecursive(child.path, output, depth + 1, allEntries, useAbsolutePaths, visitedPaths);
+            }
+        }
+
+        visitedPaths.remove(currentPath);
+    }
+
+    // Inner class: representing a single metadata entry -- copy from metadataserver.java
+    public static class MetadataEntry {
+        public final String path;
+        public final String type;
+        public final String parent;
+        public final long timestamp;
+
+        public MetadataEntry(String path, String type, String parent, long timestamp) {
+            this.path = path;
+            this.type = type;
+            this.parent = parent;
+            this.timestamp = timestamp;
+        }
+    }
+
+    // Utility method: making a http call to a backend server
     private static String httpCall(String url, String method) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setRequestMethod(method);
@@ -246,7 +443,7 @@ public class RouterGateway {
         try {
             int responseCode = conn.getResponseCode();
 
-            // 11.1 Getting the response stream: success or error
+            // Getting the response stream: success or error
             InputStream inputStream = (responseCode >= 200 && responseCode < 300)
                     ? conn.getInputStream()
                     : conn.getErrorStream();
