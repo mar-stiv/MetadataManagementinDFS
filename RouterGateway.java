@@ -362,10 +362,10 @@ public class RouterGateway {
         // Cycle detection: if we've already visited this path, stop the recursion
         if (visitedPaths.contains(currentPath)) {
             // print for debugging
-//            for (int j = 0; j < depth; j++) {
-//                output.append("    ");
-//            }
-//            output.append("└── [CYCLE DETECTED: ").append(currentPath).append("]\n");
+            for (int j = 0; j < depth; j++) {
+                output.append("    ");
+            }
+            output.append("└── [CYCLE DETECTED: ").append(currentPath).append("]\n");
             return;
         }
 
