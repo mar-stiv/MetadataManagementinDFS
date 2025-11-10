@@ -251,7 +251,7 @@ public class MetadataServer {
             // 9.1 Formating + returning the metadata
             String response = String.format("Path: %s, Type: %s, Parent: %s, Timestamp: %d",
                     entry.getPath(), entry.getType(),
-                    entry.getParent() != null ? entry.getParent() : "root",
+                    entry.getParent() != null ? entry.getParent() : "null",
                     entry.getTimestamp());
             System.out.println("[Server " + serverId + "] Stat: " + path);
             sendResponse(exchange, 200, response);
