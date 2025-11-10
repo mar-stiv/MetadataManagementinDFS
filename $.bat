@@ -42,16 +42,8 @@ if "%1" == "mkdir" (
     )
     curl "http://localhost:808%2/dump"
 ) else if "%1" == "tree" (
-    if "%2" == "" (
-        echo Usage: dfs tree ^<path^>
-        exit /b 1
-    )
     curl "http://localhost:8000/tree?path=%2"
 ) else if "%1" == "fulltree" (
-    if "%2" == "" (
-        echo Usage: dfs fulltree ^<path^>
-        exit /b 1
-    )
     curl "http://localhost:8000/fulltree?path=%2"
 ) else (
     echo Usage: dfs ^<command^> [args]
