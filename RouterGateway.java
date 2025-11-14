@@ -357,11 +357,6 @@ public class RouterGateway {
                                     Set<String> visitedPaths) {
         // Cycle detection: if we've already visited this path, stop the recursion
         if (visitedPaths.contains(currentPath)) {
-            // print for debugging
-            for (int j = 0; j < depth; j++) {
-                output.append("    ");
-            }
-            output.append("└── [CYCLE DETECTED: ").append(currentPath).append("]\n");
             return;
         }
 
@@ -371,18 +366,10 @@ public class RouterGateway {
         List<MetadataEntry> children = new ArrayList<>();
         for (MetadataEntry entry : allEntries) {
             String parent = entry.parent != null ? entry.parent : "/";
-            if (parent.equals(currentPath)) {
+            if (parent.equals(currentPath) && !entry.path.equals(currentPath)) {
                 children.add(entry);
             }
         }
-
-        // Sort children: directories first, then files, both alphabetically -- if needed?
-//        children.sort((a, b) -> {
-//            if (!a.type.equals(b.type)) {
-//                return b.type.compareTo(a.type); // "dir" comes before "file"
-//            }
-//            return a.path.compareTo(b.path);
-//        });
 
         for (int i = 0; i < children.size(); i++) {
             MetadataEntry child = children.get(i);
@@ -402,6 +389,9 @@ public class RouterGateway {
                 name = child.path;
             } else {
                 name = child.path.substring(child.path.lastIndexOf('/') + 1);
+                if(name.isEmpty()){
+                    continue; // skip empty names
+                }
             }
             output.append(name).append("\n");
 

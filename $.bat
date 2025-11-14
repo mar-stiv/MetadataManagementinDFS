@@ -42,9 +42,9 @@ if "%1" == "mkdir" (
     )
     curl "http://localhost:808%2/dump"
 ) else if "%1" == "tree" (
-    curl "http://localhost:8000/tree?path=%2"
+    curl "http://localhost:8000/tree?path=/"
 ) else if "%1" == "fulltree" (
-    curl "http://localhost:8000/fulltree?path=%2"
+    curl "http://localhost:8000/fulltree?path=/"
 ) else (
     echo Usage: dfs ^<command^> [args]
     echo Commands: mkdir, touch, readdir, stat, rm, cluster, dump, tree, fulltree
