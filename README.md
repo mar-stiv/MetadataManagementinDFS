@@ -192,6 +192,3 @@ The system uses these environment variables:
 ├── docker-compose.yml        # Orchestrates 1 router + 3 servers
 └── README.md                 # This file
 ```
-
-## TODO
-Test: tree command for the root directory
